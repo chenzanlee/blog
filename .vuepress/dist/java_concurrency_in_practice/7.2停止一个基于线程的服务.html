@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>记录的地方</title>
+    <meta name="generator" content="VuePress 1.9.7">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+    <meta name="description" content="记录个人的一些读书笔记、感悟和总结">
+    
+    <link rel="preload" href="/assets/css/0.styles.de2dd6c1.css" as="style"><link rel="preload" href="/assets/js/app.cc715817.js" as="script"><link rel="preload" href="/assets/js/2.d2e2dddd.js" as="script"><link rel="preload" href="/assets/js/9.75c49426.js" as="script"><link rel="prefetch" href="/assets/js/10.d713b357.js"><link rel="prefetch" href="/assets/js/11.f5787aee.js"><link rel="prefetch" href="/assets/js/3.95677927.js"><link rel="prefetch" href="/assets/js/4.9eca69e4.js"><link rel="prefetch" href="/assets/js/5.0ffae38e.js"><link rel="prefetch" href="/assets/js/6.c6d49775.js"><link rel="prefetch" href="/assets/js/7.7e18b05c.js"><link rel="prefetch" href="/assets/js/8.e69402c6.js">
+    <link rel="stylesheet" href="/assets/css/0.styles.de2dd6c1.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div class="theme-container no-sidebar"><header class="navbar"><div class="sidebar-button"><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" viewBox="0 0 448 512" class="icon"><path fill="currentColor" d="M436 124H12c-6.627 0-12-5.373-12-12V80c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12z"></path></svg></div> <a href="/" class="home-link router-link-active"><!----> <span class="site-name">记录的地方</span></a> <div class="links"><div class="search-box"><input aria-label="Search" autocomplete="off" spellcheck="false" value=""> <!----></div> <!----></div></header> <div class="sidebar-mask"></div> <aside class="sidebar"><!---->  <!----> </aside> <main class="page"> <div class="theme-default-content content__default"><p>title: 7.2 停止一个基于线程的服务
+tags:</p> <ul><li>Java并发编程实践</li> <li>翻译
+categories:</li> <li>[Java,Java并发编程实践]
+author: 陈赞
+date: 2021-04-07
+sticky: -72</li></ul> <hr> <h1 id="_7-2-停止一个基于线程的服务">7.2. 停止一个基于线程的服务</h1> <p>应用程序通常会创建一些拥有线程的服务，例如线程池，这些服务的生存时间通常要比创建这些服务的方法的生命要长。如果应用程序以优雅的方式关闭，这些服务所拥有的线程应该被终止。既然java中没有抢占式地中断线程的途径，那么这些线程必须被劝服主动关闭自己。
+合理的封装实践强行规定除非你拥有该线程，否则你不应该操纵一个线程，——中断它，修改它的优先级，等等。线程API文档没有关于线程所有权的正式概念：一个线程通过一个Thread对象来表示，该Thread对象能够像别的对象一样自由地共享。然而，认为一个线程有一个主人是有道理的，这个主人通常就是创建该线程的那个类。所以一个线程池拥有它的工作者线程，如果这些工作者线程需要被中断，线程池应该对此负责。
+和其他被封装的对象一样，线程的所有权不可传递：应用程序可能拥有某个服务，该服务拥有工作者线程，但是应用程序不拥有那些工作者线程，因此不应该试图直接停止线程。相反，服务应该提供关闭自己的生命周期方法，该方法同时关闭服务拥有的那些线程；这样应用程序可以关闭服务，服务可以关闭线程。ExecutorService提供了<code>shutdown</code>方法和<code>shutdownNow</code>方法;其它的拥有线程的服务应该提供一个类似的关闭机制。</p> <div class="language- extra-class"><pre class="language-text"><code>当一个拥有线程的服务比创建该服务的方法的生命要长，请提供一个生命周期方法。
+</code></pre></div><h2 id="_7-2-1-例子-一个日志服务">7.2.1.例子：一个日志服务</h2> <p>大多数的服务端程序使用日志服务,简单的日志服务可以是在代码中插入println方法。像PrintWriter这样的Stream类是线程安全的，所以这种简单的方式将不要求使用显式的同步机制。然而，在<a href="">11.6节</a>我们将看到，内嵌的日志服务在高流量的应用中可能会带来性能问题。替代的方案是将对log方法的调用来将要记录的日志信息插入一个队列中，交由另外的线程来处理该队列的日志信息。</p> <p><a href="">Listing 7.13</a>中LogWriter展示了一个简单的日志服务，在该服务中，日志活动被转移到一个分开的日志线程中。LogWriter将要记录的消息通过一个BlockingQueue来传递给日志线程，然后由该日志线程将消息写到输出流中，而不是让产生日志信息的线程直接写到输出流中。这是一种多个生产者，一个消费者的设计：任何调用log方法的活动将扮演生产者，后台的logger线程是消费者。如果logger线程落后于生产者，BlockingQueue将最终阻塞生产者直到logger线程赶上生产者的产生日志消息进度。</p> <h3 id="listing7-13-没有shutdown支持的生产者-消费者模式的日志记录服务">Listing7.13. 没有shutdown支持的生产者-消费者模式的日志记录服务</h3> <div class="language- extra-class"><pre class="language-text"><code>public class LogWriter{
+	private final BlockingQueue&lt;String&gt; queue;
+	private final LoggerThread logger;
+	public LogWriter(Writer writer){
+		this.queue=new LinkedBlockingQueue&lt;String&gt;(CAPACITY);
+		this.logger=new LoggerThread(writer);
+	}
+	public void start(){
+		logger.start();
+	}
+	public vlid log(String msg) throws InterruptedException{
+		queue.put(msg);
+	}
+	private class LoggerThread extends Thread{
+		private final PrintWriter writer;
+		...
+		public void  run(){
+			try{
+				while(true){
+					writer.println(queue.take());
+				}
+			}catch(InterruptedException ignored){
+			}finally{
+				writer.close();
+			}
+		}
+
+	}
+}
+</code></pre></div><p>在生产中，像LogWriter这样的服务将会很有用，我们需要一种方式来终止logger线程，以便它不会阻止java虚拟机的正常关闭。停止logger线程是很简单的，因为它反复地调用take方法，而该方法能够响应中断。如果logger线程被修改为当捕获到InterruptedException异常就退出，那么中断logger线程就停止了该服务。
+然而，仅仅让logger线程退出不是一个很让人满意的关闭机制。这些一种突然的关闭丢弃了那些可能正在等待输出到日志文件的日志信息，更重要的是，那些因为队列满而阻塞在log方法调用中的线程将永远不会从阻塞状态中解除。取消一个生产者消费者活动要求同时取消生产者和消费者。中断logger线程取消了消费者，但是因为在这个例子中生产者不是专门的线程，很难取消它们。</p> <p>另外一种关闭LogWriter的方式是像<a href="">Listing 7.14.</a>中展示的那样，设置一个“关闭被请求”的标志来阻止后面的日志消息的提交。这样消费者线程可以在被告知shutdown被请求时，将队列提取为空，将任何待输出的消息输出，解除任何阻塞在log方法调用中的生产者线程的阻塞状态。然而，这种方式有一个使它不可靠的竞态条件。log的实现是一种check-then-act序列：生产者可能观察到服务还未被关闭，在服务被关闭之后仍然提交信息到队列中，生产者可能会再次阻塞在log方法的调用中，并且永远不会变回未阻塞状态。我们有办法降低这种风险发生的可能性（例如让消费者在生明队列为空之前等待几秒），但是这些方式不能改变这一问题的本质，仅仅是降低了它造成失败的可能性。</p> <h3 id="listing7-14-一种向日志服务添加关闭支持的不可靠的实现方式">Listing7.14 一种向日志服务添加关闭支持的不可靠的实现方式</h3> <div class="language- extra-class"><pre class="language-text"><code>public void log(String msg) throws InterruptException{
+	if(!shutdownRequested){
+		queue.put(msg);
+	}else{
+		throw new IllegalStateException(&quot;logger is shutdown&quot;);
+	}
+
+}
+</code></pre></div><p>通过解决竞态条件来为LogWriter提供一种可靠的关闭，这意味着将一个新的日志信息的提交做成原子类型的。但是我们不想在试图将一个日志信息入队时持有一个锁，因为put方法会阻塞。相反，我们可以像<a href="">Listing7.15.</a>中展示的那样，原子性地检查shutdown请求，条件式地增加一个计数器来“保留”提交日志信息的权利。</p> <h3 id="listing-7-15-为logwriter添加一种可靠的取消机制">Listing 7.15. 为LogWriter添加一种可靠的取消机制</h3> <div class="language- extra-class"><pre class="language-text"><code>public class LogService{
+	private final BlockingQueue&lt;String&gt;  queue;
+	private final LoggerThread loggerThread;
+	private final PrintWriter writer;
+	@GuardBy(&quot;this&quot;)private boolean isShutdown;
+	@GuradBy(&quot;this&quot;)private int reservations;
+	public void start(){
+		loggerThread.start();
+	}
+	public void stop(){
+		synchronized(this){
+			isShutdown=true;
+		}
+		loggerThread.interrupt();
+	}
+	public void log(String msg) throws InterruptedException{
+		synchronized(this){
+			if(isShutdown){
+				throw new IllegalStateException(...);	
+			}
+			++reservations;
+		}
+		queue.put(msg);
+	}
+	private Class  LoggerThread extends Thread{
+		public void run(){
+			try{
+				while(true){
+					try{
+						synchronized(LogService.this){
+							if(isShutdown&amp;&amp;reservations==0){
+								break;
+							}
+						}
+						String msg=queue.take();
+						synchronized(LogService.this){
+							--reservations;
+						}
+						writer.println(msg);
+					}catch(InterruptedException e){
+						/*retry*/
+					}
+					
+				}
+			}finally{
+				writer.close();
+			}
+		}
+
+	}
+}
+</code></pre></div><p>##7.2.2. ExecutorService的关闭
+在<a href="">6.2.4节</a>，我们看到，ExecutorService提供了两种关闭的方式：使用shutdown方法优雅地关闭，使用shutdownNow突然地关闭。以突然地方式关闭时，shutdownNow方法会在试图取消所有正在执行的任务后返回一个列表，该列表包含那些还未开始的任务。</p> <p>这两种不同的终止选择提供了安全与相应性之间的取舍：突然地关闭更快但是风险更大，因为任务可能在执行的途中被打断，正常的关闭相对较慢但是更安全，因为ExecutorService会等到所有已经入队的任务都被处理完才关闭。其他的拥有线程的服务应该考虑提供一种类似的关闭模式的选择。</p> <p>简单的程序可能侥幸从主线程中启动和关闭一个全局的ExecutorService。更负杂的程序很可能在一个更高级别的服务中封装一个ExecutorService,提供它自己的生命周期方法，例如在<a href="">Listing 7.16</a>中LogService的变种将线程的管理委托给一个ExecutorService，而不是自己管理自己所拥有的线程。封装一个ExecutorService通过增加一个链接的方式延伸了从应用到服务到线程的所有权链；该链上的每个成员管理它们拥有的服务或者线程的生命周期。</p> <h3 id="listing7-16-logging-service-that-uses-an-executorservice">Listing7.16. Logging Service that Uses an ExecutorService</h3> <div class="language- extra-class"><pre class="language-text"><code>public class LogService{
+	private final ExecutorService exec=newSingleThreadExecutor();
+	...
+	public void start(){}
+	public void stop() throws InterruptedException{
+		try{
+			exec.shutdown();
+			exec.awaitTermination(TIMEOUT,UNIT);
+		}finally{
+			writer.close();
+	  	}
+	}
+	public void log(String msg){
+		try{
+			exec.execute(new WriteTask(msg));
+		}catch(RejectedExecution ignored){
+		}
+		
+	}
+}
+</code></pre></div><h2 id="_7-2-3-poison-pills">7.2.3.Poison Pills</h2> <p>另一种说服生产者——消费者模式服务关闭的方式是使用一个毒药片：一个被放置在队列中能够被识别的对象，表示着当你拿到它时，停止。在一个先进先出的队列中，毒药片确保了消费者们在服务关闭之前能够完成它们队列中的工作，因为任何在提交毒药片之前提交的任务都将在毒药片前面取出；生产者不应该在将毒药片放进队列中后在提交任何工作。<a href="">Listings 7.17</a>,<a href="">7.18</a>和<a href="">7.19</a>中的IndexingService展示了91页的<a href="">Listing 5.8</a>中的桌面搜索例子的一个单个生产者，单个消费者版本，该版本使用一个毒药片来关闭服务。</p> <h3 id="listing7-17-shutdown-with-poison-pill">Listing7.17. Shutdown with Poison Pill.</h3> <div class="language- extra-class"><pre class="language-text"><code>public class IndexingService {
+	private static final File POISON=new File(&quot;&quot;);
+	private final IndexerThread consumer=new IndexerThread();
+	private final CrawlerThread producer=new CrawlerThread();
+	private final BlockingQueue&lt;File&gt; queue;
+	private final FileFilter fileFilter;
+	private final File root;
+	class IndexerThread extends Thread{
+		/*Listing 7.18*/
+	}
+	class CrawlerThread extends Thread{
+		/*Listing 7.19*/
+	}
+	public void start(){
+		producer.start();
+		consumer.start();
+	}
+	public void stop(){
+		producer.interrupt();
+	}
+	public void awaitTermination() throws InterruptedException{
+		consumer.join();
+	}
+}
+</code></pre></div><h3 id="listing-7-18-producer-thread-for-indexingservice">Listing 7.18. Producer Thread for IndexingService.</h3> <div class="language- extra-class"><pre class="language-text"><code>public class CrawlerThread extends Thread{
+	public void run(){
+		try{
+			crawl(root);
+		}catch(InterruptedException e){
+			/*fall through */
+		}finally{
+			while(true){
+				try{
+					queue.put(POISON);
+					break;
+				}catch(InterruptedException e1){
+					/*retry*/
+				}
+			}
+		}
+	}
+	private void crawl(File root) throws InterruptedException{
+		...
+	}
+}
+</code></pre></div><h3 id="listing-7-19-consumer-thread-for-indexingservice">Listing 7.19. Consumer Thread for IndexingService</h3> <div class="language- extra-class"><pre class="language-text"><code>public class IndexerThread extends Thread{
+	public void run(){
+		try{
+			while(true){
+				File file=queue.take();
+				if(file==POISON）{
+					break;
+				}else{
+					indexFile(file);
+				}
+			}
+		}catch(InterruptedException consumed){
+			
+		}
+	}
+}
+</code></pre></div><p>毒药片这种方式尽在生产者和消费者的数量是知道的这种情况下有效。IndexingService中的那种方式可以扩展成多个生产者，每个生产者向队列中放置一个毒药片，让消费者只在它接收到N（生产者的数量）个毒药片时停止。它也能扩展成多个消费者，通过让每个生产者放置N个毒药片到队列中，尽管在拥有大量的生产者和消费者的情况下这中方式可能显得笨重。毒药片只能在无界队列的情况下可靠工作。</p> <h2 id="_7-2-4-example-一个执行一次的execution-service">7.2.4 Example:一个执行一次的Execution Service</h2> <p>如果一个方法需要处理一批任务，并且直到所有的任务完成后才返回，它可以通过使用一个私有的Executor来简化服务的生命周期的管理，该Executor的生命周期和那个方法绑定在一起。（在这种场景下，invokeAll方法和invokeAny方法通常可能很有用）。</p> <p><a href="">Listing 7.20</a>中的checkMail方法平行地查询众多主机中的新邮件。它创建了一个私有的Executor，为每台主机提交一个任务：它然后关闭该executor，等待终结，当所有的检查邮件的任务都完成后executor就会终结。</p> <p>###Listing 7.20. Using a Private Executor Whose LifeTime is Bounded by a Method Call</p> <div class="language- extra-class"><pre class="language-text"><code>boolean checkMail(Set&lt;String&gt; hosts,long timeout,TimeUnit unit) throws InterruptedException{
+	ExecutorService exec=Executors.newCachedThreadPool();
+	final AtomicBoolean hasNewMail=new AtomicBoolean(false);
+	try{
+		for(final String host:hosts){
+			exec.execute(new Runnable(){
+				public void run(){
+					if(checkedMail(host){
+						hasNewMail.set(true);
+					}
+				}
+			};
+		}	
+	}finally{
+		exec.shutdown();
+		exec.awaitTermination(timeout,unit);
+	}
+	return hasNewMail.get();
+}
+</code></pre></div><h2 id="_7-2-5-shutdownnow方法的限制条件">7.2.5. shutdownNow方法的限制条件</h2> <p>当一个ExecutorService通过调用shutdownNow方法来突然的关闭时，它会尝试取消当前正在处理中的任务，并返回一个任务列表集合，该列表集合中包含了那些已经提交当还未开始执行的任务以便这样任务可以记录到日志中或者保存下来留待以后的处理。</p> <p>然而，这里没有通用的方法来找出哪个任务启动了但是还未完成。这意味着我们无法在ExecutorService关闭时获知正在处理中的任务的状态除非任务自身执行某种检查点操作。为了获知哪些任务未完成，你不仅仅需要知道哪些任务没有开始，还要知道当executor关闭时哪些任务正在处理中。</p> <p><a href="">Listing7.21</a></p></div> <footer class="page-edit"><!----> <!----></footer> <!----> </main></div><div class="global-ui"><!----></div></div>
+    <script src="/assets/js/app.cc715817.js" defer></script><script src="/assets/js/2.d2e2dddd.js" defer></script><script src="/assets/js/9.75c49426.js" defer></script>
+  </body>
+</html>
